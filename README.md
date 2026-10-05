@@ -17,15 +17,27 @@ O sistema foi desenvolvido de maneira enxuta em Python puro (3.12+), com foco em
 ## 🚀 Como Rodar o Projeto pelo Código-Fonte (Modo Desenvolvedor)
 
 1. Abra o terminal na pasta raiz do projeto.
-2. Instale as dependências executando:
+2. Instale as dependências (caso não possua):
    ```bash
-   pip install -r requisitos.txt
+   pip install customtkinter pillow
    ```
 3. Inicie o simulador rodando o ponto de entrada principal:
    ```bash
    python src/principal.py
    ```
-4. Na interface gráfica, clique em **"Carregar Arquivo"** e escolha um arquivo `.txt` de configuração (existem alguns arquivos básicos na pasta `exemplos/`).
+
+### 📁 Estrutura do Projeto (Clean OOP)
+```text
+📦 simulador-sistema-operacional-multitarefa
+ ┣ 📂 src
+ ┃ ┣ 📂 core/          # Componentes reais de SO (Hardware, Kernel, TCB)
+ ┃ ┣ 📂 gui/           # Visão burra (CustomTkinter + Renderizador Pillow)
+ ┃ ┣ 📜 principal.py   # Main
+ ┃ ┗ 📜 simulador.py   # Controller I/O e Memento (Time-Travel)
+ ┣ 📜 compilar_windows.bat
+ ┣ 📜 documentacao.md
+ ┗ 📜 README.md
+```
 
 ## 📦 Como Compilar o Executável (.exe) para Usuário Final
 
