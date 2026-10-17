@@ -4,6 +4,7 @@ from core.kernel.tcb import TCB
 from core.kernel.escalonador import Escalonador, criar_escalonador
 from core.kernel.despachante import Despachante
 from core.kernel.gerenciador_tarefas import GerenciadorTarefas
+from core.logger import log_core
 
 
 class Kernel:
@@ -22,24 +23,22 @@ class Kernel:
 
         # Registra a rotina de tratamento do temporizador na Tabela de Interrupções (IVT) do Hardware
         self.hardware.registrar_tratador_interrupcao(self.tratar_interrupcao_relogio)
+        self.gerenciador_tarefas.limpar_eventos_tick()
 
-        # Registra o log inicial de boot do sistema no Tick 0
-        self.gerenciador_tarefas.limpar_eventos_tick(titulo_log="Tick 0 · Inicialização do Sistema")
-        tarefas_validas = [f"T{t.id_tarefa}" for t in tcbs if t.duracao > 0 and t.periodo > 0]
-        resumo_tarefas = ", ".join(tarefas_validas) if tarefas_validas else "1 tarefa padrão (NOVA)"
-        self.gerenciador_tarefas.registrar_log(
-            funcao="Hardware.registrar_tratador_interrupcao(Kernel.tratar_interrupcao_relogio)",
-            detalhe=(
-                f"IVT configurada para IRQ 0 | CPUs: {len(self.hardware.cpus)} | "
-                f"Política: {self.algoritmo.upper()} | Tarefas: {resumo_tarefas}."
-            ),
-            categoria="SISTEMA",
+        log_core(
+            "Kernel.__init__",
+            f"Núcleo inicializado com Escalonador={self.escalonador.__class__.__name__} "
+            f"({self.algoritmo.upper()}) e Despachante ativo.",
         )
 
     def alterar_algoritmo(self, novo_algoritmo: str) -> None:
         """Altera dinamicamente a política de escalonamento do Kernel (Requisito 3.1)."""
         self.escalonador = criar_escalonador(novo_algoritmo)
         self.algoritmo = novo_algoritmo.strip().lower()
+        log_core(
+            "Kernel.alterar_algoritmo",
+            f"Política de escalonamento alterada para {self.algoritmo.upper()} ({self.escalonador.__class__.__name__}).",
+        )
 
     def tratar_interrupcao_relogio(self, tick_atual: int) -> None:
         """
@@ -51,15 +50,7 @@ class Kernel:
         4. Executa 1 ciclo nas CPUs físicas (CPU.executar_ciclo) e contabiliza términos/deadlines em 'tick_atual'.
         """
         tick_inicio = max(0, tick_atual - 1)
-        self.gerenciador_tarefas.limpar_eventos_tick(
-            titulo_log=f"Tick {tick_inicio} → {tick_atual} (Intervalo [{tick_inicio}, {tick_atual}))"
-        )
-
-        self.gerenciador_tarefas.registrar_log(
-            funcao=f"Hardware.gerar_interrupcao_tick() → Kernel.tratar_interrupcao_relogio({tick_atual})",
-            detalhe=f"Temporizador físico pulsou para T{tick_atual} e disparou IRQ 0 ao Kernel.",
-            categoria="IRQ",
-        )
+        self.gerenciador_tarefas.limpar_eventos_tick()
 
         # Identifica quem estava executando nas CPUs imediatamente antes deste ciclo
         ids_nas_cpus_antes = [
@@ -67,6 +58,16 @@ class Kernel:
             for cpu in self.hardware.cpus
             if cpu.tcb_atual is not None and cpu.tcb_atual.estado.name == "EXECUTANDO"
         ]
+        estado_cpus_str = (
+            ", ".join(f"T{tid}" for tid in ids_nas_cpus_antes)
+            if ids_nas_cpus_antes
+            else "nenhuma tarefa em execução"
+        )
+        log_core(
+            "Kernel.tratar_interrupcao_relogio",
+            f"Iniciando tratamento da IRQ 0 para o intervalo [{tick_inicio}, {tick_atual}) "
+            f"| Tarefas nas CPUs antes do tick: [{estado_cpus_str}].",
+        )
 
         # 1. Prepara ingressos e reativações periódicas no início do intervalo
         self.gerenciador_tarefas.preparar_inicio_intervalo(tick_inicio)
@@ -74,9 +75,6 @@ class Kernel:
         # 2. Escalonador ordena as tarefas aptas segundo a política ativa (RM ou EDF)
         elegiveis = self.gerenciador_tarefas.obter_elegiveis()
         fila_prontos = self.escalonador.eleger(elegiveis, tick_inicio, ids_nas_cpus_antes)
-        self.gerenciador_tarefas.logs_tick_atual.append(
-            self.escalonador.gerar_log_eleicao(fila_prontos, ids_nas_cpus_antes)
-        )
 
         # 3. Despachante realiza trocas de contexto ou mantém tarefas nas CPUs físicas
         self.despachante.despachar(
@@ -97,6 +95,10 @@ class Kernel:
         if tick_atual == 0:
             return
 
+        log_core(
+            "Kernel.reescalonar_estado_atual",
+            f"Reavaliando fila de prontos e alocação de CPUs após edição manual em t={tick_atual}.",
+        )
         ids_nas_cpus_antes = [
             cpu.tcb_atual.id_tarefa for cpu in self.hardware.cpus if cpu.tcb_atual is not None
         ]
@@ -104,9 +106,6 @@ class Kernel:
         self.gerenciador_tarefas.preparar_inicio_intervalo(tick_atual)
         elegiveis = self.gerenciador_tarefas.obter_elegiveis()
         fila_prontos = self.escalonador.eleger(elegiveis, tick_atual, ids_nas_cpus_antes)
-        self.gerenciador_tarefas.logs_tick_atual.append(
-            self.escalonador.gerar_log_eleicao(fila_prontos, ids_nas_cpus_antes)
-        )
         self.despachante.despachar(
             cpus=self.hardware.cpus,
             fila_ordenada=fila_prontos,

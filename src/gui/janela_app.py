@@ -1,3 +1,5 @@
+import os
+import subprocess
 from typing import List
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
@@ -5,7 +7,6 @@ from controlador.controlador_app import ControladorApp
 from controlador.dtos import CardTCBDTO
 from gui.desenhista_gantt import DesenhistaGantt
 from gui.modais_edicao import ModaisConfiguracao
-from gui.painel_logs import PainelLogs
 from gui.utilitarios_gui import FabricaIcones, GerenciadorTooltip, obter_cor_fundo_card
 
 
@@ -14,8 +15,7 @@ class JanelaApp(ctk.CTk):
     Interface Gráfica Principal da Aplicação (100% Dummy / Passive View).
     Coordena os componentes visuais de alto nível consumindo exclusivamente DTOs do ControladorApp:
     - Topo: botões de controle de simulação e resumo das configurações do sistema.
-    - Esquerda: Gráfico de Gantt e barra horizontal inferior de cartões TCB.
-    - Direita: PainelLogs retrátil exibindo as chamadas das funções-chave do core.
+    - Centro/Base: Gráfico de Gantt e barra horizontal inferior de cartões TCB.
     """
 
     def __init__(self) -> None:
@@ -41,14 +41,11 @@ class JanelaApp(ctk.CTk):
         self.atualizar_interface()
 
     def _configurar_interface(self) -> None:
-        """Constrói o layout principal dividindo barra superior, área esquerda e sidebar de logs."""
+        """Constrói o layout principal dividindo barra superior, Gráfico de Gantt e barra inferior de TCBs."""
         self._construir_barra_superior()
 
         self.frame_conteudo = ctk.CTkFrame(self, fg_color="transparent")
         self.frame_conteudo.pack(side="top", fill="both", expand=True, padx=12, pady=(0, 10))
-
-        self.painel_logs = PainelLogs(self.frame_conteudo, self.tooltip)
-        self.painel_logs.pack(side="right", fill="y", padx=(8, 0))
 
         self.frame_area_esquerda = ctk.CTkFrame(self.frame_conteudo, fg_color="transparent")
         self.frame_area_esquerda.pack(side="left", fill="both", expand=True)
@@ -65,7 +62,7 @@ class JanelaApp(ctk.CTk):
         self._construir_painel_resumo_sistema()
 
     def _construir_botoes_execucao(self) -> None:
-        """Instancia os botões de controle de arquivo, avanço/retrocesso temporal e exportação."""
+        """Instancia os botões de controle de arquivo, avanço/retrocesso temporal, exportação e log."""
         self.frame_botoes_acao = ctk.CTkFrame(self.frame_controles, fg_color="transparent")
         self.frame_botoes_acao.pack(side="left", padx=8, pady=8)
 
@@ -75,6 +72,7 @@ class JanelaApp(ctk.CTk):
             ("btn_avancar", "Avançar Tick", 114, self.acao_avancar),
             ("btn_exec_completa", "Execução Completa", 142, self.acao_executar_completo),
             ("btn_exportar", "Exportar Imagem", 132, self.acao_exportar),
+            ("btn_abrir_log", "Abrir Log (.txt)", 126, self.acao_abrir_log),
         ]
         for attr, texto, largura, comando in especificacoes:
             botao = ctk.CTkButton(
@@ -317,6 +315,17 @@ class JanelaApp(ctk.CTk):
             self.desenhista.exportar_para_arquivo(caminho, dados_gantt)
             messagebox.showinfo("Exportação Concluída", "Gráfico de Gantt completo exportado com sucesso!")
 
+    def acao_abrir_log(self) -> None:
+        """Abre o arquivo .txt de log diretamente no Bloco de Notas do Windows 11."""
+        caminho_log = self.controlador.obter_caminho_arquivo_log()
+        if not os.path.exists(caminho_log):
+            messagebox.showwarning("Aviso", "O arquivo de log ainda não foi gerado.")
+            return
+        try:
+            subprocess.Popen(["notepad.exe", caminho_log])
+        except Exception as e:
+            messagebox.showerror("Erro ao Abrir Log", f"Não foi possível abrir o Bloco de Notas:\n{e}")
+
     def acao_abrir_modal_sistema(self) -> None:
         """Abre o diálogo modal de edição dos parâmetros do Sistema Operacional."""
         self.tooltip.esconder()
@@ -336,7 +345,7 @@ class JanelaApp(ctk.CTk):
     # Atualização Passiva da Tela a partir dos DTOs Tipados
     # ------------------------------------------------------------------
     def atualizar_interface(self) -> None:
-        """Atualiza cabeçalho, Gráfico de Gantt, cartões TCB e painel de Logs."""
+        """Atualiza cabeçalho, Gráfico de Gantt e cartões TCB."""
         self.tooltip.esconder()
         cabecalho = self.controlador.obter_dados_cabecalho()
         self.lbl_config_1.configure(text=cabecalho.texto_linha_1)
@@ -353,7 +362,6 @@ class JanelaApp(ctk.CTk):
             self.canvas, self.controlador.obter_dados_gantt(para_exportacao=False)
         )
         self._atualizar_barra_inferior_tcb(self.controlador.obter_dados_cards_tcb())
-        self.painel_logs.atualizar(self.controlador.obter_dados_logs_didaticos())
 
     def _atualizar_barra_inferior_tcb(self, cards_tcb: List[CardTCBDTO]) -> None:
         """Reconstrói os cartões de TCB na barra horizontal inferior."""

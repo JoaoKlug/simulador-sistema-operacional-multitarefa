@@ -89,24 +89,3 @@ class DadosGanttDTO:
     eventos: List[MarcadorEventoGanttDTO] = field(default_factory=list)
     segmentos_cpus_desligadas: List[SegmentoGanttDTO] = field(default_factory=list)
     resumo_cpus_desligadas: str = ""
-
-
-@dataclass(frozen=True)
-class ChamadaFuncaoLogDTO:
-    """DTO imutável representando uma chamada de função-chave do core e seu efeito concreto."""
-    funcao: str
-    detalhe: str
-    categoria: str
-
-
-@dataclass(frozen=True)
-class BlocoLogTickDTO:
-    """DTO imutável agrupando todas as chamadas de função ocorridas em um tick/evento."""
-    cabecalho_tick: str
-    chamadas: List[ChamadaFuncaoLogDTO] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class LogsDidaticosDTO:
-    """DTO consolidado para renderização do painel lateral 'Logs' (100% independente do domínio)."""
-    blocos: List[BlocoLogTickDTO] = field(default_factory=list)

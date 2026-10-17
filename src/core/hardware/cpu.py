@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Optional, TYPE_CHECKING
+from core.logger import log_core
 
 if TYPE_CHECKING:
     from core.kernel.tcb import TCB
@@ -47,6 +48,16 @@ class CPU:
         """
         if self.tcb_atual is not None:
             self.tcb_atual.tempo_ja_executado += 1
+            log_core(
+                "CPU.executar_ciclo",
+                f"C{self.id_cpu} executou 1 ciclo da tarefa T{self.tcb_atual.id_tarefa} "
+                f"(progresso no ciclo atual: {self.tcb_atual.tempo_ja_executado}/{self.tcb_atual.duracao}).",
+            )
             return self.tcb_atual
         self.registrar_ociosidade()
+        log_core(
+            "CPU.executar_ciclo",
+            f"C{self.id_cpu} sem tarefa alocada -> CPU desligada no ciclo "
+            f"(tempo desligado acumulado: {self.tempo_desligado} ticks).",
+        )
         return None

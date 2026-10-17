@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any, List, Dict, Optional, Tuple
 from core.sistema_operacional import SistemaOperacional
 from core.kernel.tcb import TCB, ParametrosTarefa
+from core.logger import obter_caminho_log
 from simulador.simulador import Simulador
 from controlador.dtos import (
     DadosEdicaoTarefaDTO,
@@ -10,9 +11,6 @@ from controlador.dtos import (
     SegmentoGanttDTO,
     MarcadorEventoGanttDTO,
     DadosGanttDTO,
-    ChamadaFuncaoLogDTO,
-    BlocoLogTickDTO,
-    LogsDidaticosDTO,
 )
 
 
@@ -428,32 +426,6 @@ class ControladorApp:
             return f"C{ids_off[0]}-C{ids_off[-1]}"
         return f"{len(ids_off)}C"
 
-    def obter_dados_logs_didaticos(self) -> LogsDidaticosDTO:
-        """
-        Compila a linha do tempo de chamadas das funções-chave de src/core/
-        em um LogsDidaticosDTO pronto para a sidebar 'Logs' da GUI.
-        """
-        estados = self.simulador.obter_todos_estados()
-        if not estados:
-            return LogsDidaticosDTO(blocos=[])
-
-        blocos: List[BlocoLogTickDTO] = []
-        for est in estados:
-            if not est.logs_tick_atual:
-                continue
-            cabecalho = (
-                est.titulo_log_atual
-                if est.titulo_log_atual
-                else f"Tick {max(0, est.tick_atual - 1)} → {est.tick_atual}"
-            )
-            chamadas = [
-                ChamadaFuncaoLogDTO(
-                    funcao=reg.funcao,
-                    detalhe=reg.detalhe,
-                    categoria=reg.categoria,
-                )
-                for reg in est.logs_tick_atual
-            ]
-            blocos.append(BlocoLogTickDTO(cabecalho_tick=cabecalho, chamadas=chamadas))
-
-        return LogsDidaticosDTO(blocos=blocos)
+    def obter_caminho_arquivo_log(self) -> str:
+        """Retorna o caminho absoluto do arquivo .txt de log do Sistema Operacional."""
+        return obter_caminho_log()

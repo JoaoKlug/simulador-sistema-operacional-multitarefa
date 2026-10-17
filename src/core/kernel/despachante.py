@@ -2,6 +2,7 @@ from typing import List, Dict, Optional
 from core.hardware.cpu import CPU
 from core.kernel.tcb import TCB
 from core.kernel.gerenciador_tarefas import GerenciadorTarefas
+from core.logger import log_core
 from core.processos.estado_tarefa import EstadoTarefa
 
 
@@ -18,10 +19,16 @@ class Despachante:
         Passo 4 da Figura 5.1 de Maziero: salva o contexto da tarefa que perde o processador
         em seu TCB, atualizando seu estado de EXECUTANDO para PRONTA.
         """
+        id_cpu_anterior = cpu.id_cpu if cpu is not None else tcb.id_cpu_alocada
         if cpu is not None and cpu.tcb_atual is not None and cpu.tcb_atual.id_tarefa == tcb.id_tarefa:
             cpu.liberar()
         tcb.estado = EstadoTarefa.PRONTA
         tcb.id_cpu_alocada = None
+        info_cpu = f" da C{id_cpu_anterior}" if id_cpu_anterior is not None else ""
+        log_core(
+            "Despachante.salvar_contexto",
+            f"Preempção: contexto de T{tcb.id_tarefa} salvo no TCB (retirada{info_cpu}: EXECUTANDO -> PRONTA).",
+        )
 
     def restaurar_contexto(self, tcb: TCB, cpu: CPU) -> None:
         """
@@ -31,6 +38,10 @@ class Despachante:
         tcb.estado = EstadoTarefa.EXECUTANDO
         tcb.id_cpu_alocada = cpu.id_cpu
         cpu.alocar_tarefa(tcb)
+        log_core(
+            "Despachante.restaurar_contexto",
+            f"Contexto de T{tcb.id_tarefa} restaurado na C{cpu.id_cpu} (PRONTA -> EXECUTANDO).",
+        )
 
     def despachar(
         self,
@@ -59,16 +70,19 @@ class Despachante:
         acoes_cpus: Dict[int, str] = {}
         cpus_livres = self._manter_tarefas_atuais(cpus, eleitas_pendentes, acoes_cpus)
 
-        houve_preempcao = False
         for cpu in cpus_livres:
             tcb_antigo = mapa_cpu_anterior.get(cpu.id_cpu)
             tcb_eleito = eleitas_pendentes.pop(0) if eleitas_pendentes else None
             if tcb_eleito is not None and tcb_eleito.sorteada_no_tick and tcb_eleito.id_tarefa not in ids_nas_cpus_antes:
                 gerenciador_tarefas.registrar_evento(tcb_eleito.id_tarefa, tick_evento, "SORTEIO")
-            if self._alocar_cpu_livre(cpu, tcb_eleito, tcb_antigo, acoes_cpus):
-                houve_preempcao = True
+            self._alocar_cpu_livre(cpu, tcb_eleito, tcb_antigo, acoes_cpus)
 
-        self._registrar_log_despacho(cpus, nao_eleitas, acoes_cpus, houve_preempcao, gerenciador_tarefas)
+        partes_despacho = [acoes_cpus[c.id_cpu] for c in cpus if c.id_cpu in acoes_cpus]
+        if nao_eleitas:
+            espera_str = ", ".join(f"T{t.id_tarefa}" for t in nao_eleitas)
+            partes_despacho.append(f"Aguardando na fila PRONTA: [{espera_str}]")
+
+        log_core("Despachante.despachar", " | ".join(partes_despacho))
 
     def _preemptar_nao_eleitas(self, cpus: List[CPU], nao_eleitas: List[TCB]) -> None:
         """Salva o contexto das tarefas que perderam o processador e permanecem em PRONTA."""
@@ -107,41 +121,20 @@ class Despachante:
         tcb_eleito: Optional[TCB],
         tcb_antigo: Optional[TCB],
         acoes_cpus: Dict[int, str],
-    ) -> bool:
+    ) -> None:
         """Restaura o contexto da tarefa eleita na CPU livre ou desliga a CPU no ciclo."""
         if tcb_eleito is None:
             cpu.tcb_atual = None
             cpu.desligada_no_tick = True
             acoes_cpus[cpu.id_cpu] = f"C{cpu.id_cpu}: sem tarefa apta (desligada no ciclo)"
-            return False
+            return
 
         self.restaurar_contexto(tcb_eleito, cpu)
         if tcb_antigo is not None and tcb_antigo.id_tarefa != tcb_eleito.id_tarefa:
             acoes_cpus[cpu.id_cpu] = (
-                f"C{cpu.id_cpu}: Preempção! salvar_contexto(T{tcb_antigo.id_tarefa} → PRONTA) "
-                f"e restaurar_contexto(T{tcb_eleito.id_tarefa} → EXECUTANDO)"
+                f"C{cpu.id_cpu}: trocou contexto de T{tcb_antigo.id_tarefa} (preemptada) "
+                f"para T{tcb_eleito.id_tarefa} (EXECUTANDO)"
             )
-            return True
+            return
 
-        acoes_cpus[cpu.id_cpu] = f"C{cpu.id_cpu}: restaurar_contexto(T{tcb_eleito.id_tarefa}: PRONTA → EXECUTANDO)"
-        return False
-
-    def _registrar_log_despacho(
-        self,
-        cpus: List[CPU],
-        nao_eleitas: List[TCB],
-        acoes_cpus: Dict[int, str],
-        houve_preempcao: bool,
-        gerenciador_tarefas: GerenciadorTarefas,
-    ) -> None:
-        """Compila e registra a entrada de log resumindo a atuação do Despachante."""
-        partes_despacho = [acoes_cpus[c.id_cpu] for c in cpus if c.id_cpu in acoes_cpus]
-        if nao_eleitas:
-            espera_str = ", ".join(f"T{t.id_tarefa}" for t in nao_eleitas)
-            partes_despacho.append(f"Aguardando em PRONTA: [{espera_str}]")
-
-        gerenciador_tarefas.registrar_log(
-            funcao="Despachante.despachar()",
-            detalhe=" | ".join(partes_despacho),
-            categoria="PREEMPCAO" if houve_preempcao else "DESPACHANTE",
-        )
+        acoes_cpus[cpu.id_cpu] = f"C{cpu.id_cpu}: alocou T{tcb_eleito.id_tarefa} (PRONTA -> EXECUTANDO)"

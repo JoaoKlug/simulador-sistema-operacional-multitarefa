@@ -16,17 +16,6 @@ class EventoTarefaTick:
 
 
 @dataclass(frozen=True)
-class RegistroLogCore:
-    """
-    Representa o registro didático de uma função-chave executada em src/core/
-    para exibição na sidebar 'Logs' da interface gráfica.
-    """
-    funcao: str
-    detalhe: str
-    categoria: str = "INFO"
-
-
-@dataclass(frozen=True)
 class ParametrosTarefa:
     """Agrupa os dados de criação ou edição de uma tarefa, evitando listas longas de parâmetros."""
     id_tarefa: int

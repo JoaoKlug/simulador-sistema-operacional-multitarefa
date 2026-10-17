@@ -2,8 +2,9 @@ import re
 from typing import List, Optional
 from core.hardware.cpu import CPU
 from core.hardware.hardware import Hardware
-from core.kernel.tcb import TCB, ParametrosTarefa, EventoTarefaTick, RegistroLogCore
+from core.kernel.tcb import TCB, ParametrosTarefa, EventoTarefaTick
 from core.kernel.kernel import Kernel
+from core.logger import limpar_log, log_core, log_secao
 from core.processos.estado_tarefa import EstadoTarefa
 
 
@@ -28,9 +29,23 @@ class SistemaOperacional:
         if quantum < 0:
             raise ValueError("O quantum não pode ser negativo.")
 
+        limpar_log()
+        log_secao("INICIALIZAÇÃO DO SISTEMA OPERACIONAL (TICK 0)")
+
         self.quantum_global: int = quantum
         self.hardware: Hardware = Hardware(qtde_cpus=qtde_cpus, tick_inicial=0)
         self.kernel: Kernel = Kernel(hardware=self.hardware, algoritmo=algoritmo, tcbs=tarefas)
+
+        tarefas_resumo = [
+            f"T{t.id_tarefa}(Ing={t.instante_ingresso}, Dur={t.duracao}, P={t.periodo}, DL={t.prazo_relativo})"
+            for t in tarefas
+            if t.duracao > 0 and t.periodo > 0
+        ]
+        texto_tarefas = ", ".join(tarefas_resumo) if tarefas_resumo else "1 tarefa padrão (NOVA, parâmetros zerados)"
+        log_core(
+            "SistemaOperacional.__init__",
+            f"Sistema inicializado | CPUs={qtde_cpus} | Política={algoritmo.upper()} | Quantum={quantum} | Tarefas=[{texto_tarefas}].",
+        )
 
     def avancar_tempo(self) -> int:
         """
@@ -49,17 +64,15 @@ class SistemaOperacional:
         if quantum < 0:
             raise ValueError("Modificação inválida: o quantum não pode ser negativo.")
 
-        self.kernel.gerenciador_tarefas.limpar_eventos_tick(
-            titulo_log=f"Tick {self.tick_atual} · Configuração do Sistema"
-        )
+        log_secao(f"CONFIGURAÇÃO DO SISTEMA (TICK {self.tick_atual})")
+        self.kernel.gerenciador_tarefas.limpar_eventos_tick()
         self.kernel.alterar_algoritmo(algoritmo)
         self.quantum_global = quantum
         self._redimensionar_cpus(qtde_cpus)
 
-        self.kernel.gerenciador_tarefas.registrar_log(
-            funcao="SistemaOperacional.modificar_parametros_sistema()",
-            detalhe=f"Escalonador={algoritmo.upper()} | Quantum={quantum} | CPUs={qtde_cpus}.",
-            categoria="SISTEMA",
+        log_core(
+            "SistemaOperacional.modificar_parametros_sistema",
+            f"Parâmetros globais atualizados: Escalonador={algoritmo.upper()} | Quantum={quantum} | CPUs={qtde_cpus}.",
         )
         self.kernel.reescalonar_estado_atual(self.tick_atual)
 
@@ -92,18 +105,14 @@ class SistemaOperacional:
             prazo_relativo=params.prazo_relativo,
             tick_inicio_ciclo_atual=params.instante_ingresso,
         )
-        self.kernel.gerenciador_tarefas.limpar_eventos_tick(
-            titulo_log=f"Tick {self.tick_atual} · Adição de Tarefa"
-        )
+        log_secao(f"ADIÇÃO DE TAREFA (TICK {self.tick_atual})")
+        self.kernel.gerenciador_tarefas.limpar_eventos_tick()
         self.kernel.gerenciador_tarefas.tcbs.append(novo_tcb)
-        self.kernel.gerenciador_tarefas.registrar_log(
-            funcao=f"SistemaOperacional.adicionar_tarefa(T{params.id_tarefa})",
-            detalhe=(
-                f"Criado TCB de T{params.id_tarefa} em NOVA "
-                f"(Ingresso={params.instante_ingresso}, Duração={params.duracao}, "
-                f"Período={params.periodo}, DL={params.prazo_relativo})."
-            ),
-            categoria="SISTEMA",
+        log_core(
+            "SistemaOperacional.adicionar_tarefa",
+            f"Criado TCB de T{params.id_tarefa} no estado NOVA "
+            f"(Ingresso={params.instante_ingresso}, Duração={params.duracao}, "
+            f"Período={params.periodo}, DL_Rel={params.prazo_relativo}).",
         )
         self.kernel.reescalonar_estado_atual(self.tick_atual)
 
@@ -123,18 +132,15 @@ class SistemaOperacional:
         self._validar_transicao_estado(tcb, params, novo_estado)
 
         estado_anterior = tcb.estado
-        self.kernel.gerenciador_tarefas.limpar_eventos_tick(
-            titulo_log=f"Tick {self.tick_atual} · Edição Manual (T{params.id_tarefa})"
-        )
+        log_secao(f"EDIÇÃO MANUAL DE TAREFA T{params.id_tarefa} (TICK {self.tick_atual})")
+        self.kernel.gerenciador_tarefas.limpar_eventos_tick()
         novo_estado_efetivo = self._aplicar_parametros_no_tcb(tcb, params, cor_limpa, novo_estado)
 
-        self.kernel.gerenciador_tarefas.registrar_log(
-            funcao=f"SistemaOperacional.modificar_tarefa(T{params.id_tarefa})",
-            detalhe=(
-                f"Estado={novo_estado_efetivo.value} | Exec={tcb.tempo_ja_executado}/{tcb.duracao} | "
-                f"Período={tcb.periodo} | DL Rel={tcb.prazo_relativo} | DL Abs={tcb.prazo_absoluto_atual}."
-            ),
-            categoria="SISTEMA",
+        log_core(
+            "SistemaOperacional.modificar_tarefa",
+            f"T{params.id_tarefa} atualizada: Estado={estado_anterior.value}->{novo_estado_efetivo.value} | "
+            f"Exec={tcb.tempo_ja_executado}/{tcb.duracao} | Período={tcb.periodo} | "
+            f"DL_Rel={tcb.prazo_relativo} | DL_Abs={tcb.prazo_absoluto_atual}.",
         )
         self._realocar_cpu_apos_edicao(tcb, estado_anterior, novo_estado_efetivo)
 
@@ -326,14 +332,6 @@ class SistemaOperacional:
     @property
     def eventos_tick_atual(self) -> List[EventoTarefaTick]:
         return self.kernel.gerenciador_tarefas.eventos_tick_atual
-
-    @property
-    def logs_tick_atual(self) -> List[RegistroLogCore]:
-        return self.kernel.gerenciador_tarefas.logs_tick_atual
-
-    @property
-    def titulo_log_atual(self) -> str:
-        return self.kernel.gerenciador_tarefas.titulo_log_atual
 
     @property
     def cpus(self) -> List[CPU]:
