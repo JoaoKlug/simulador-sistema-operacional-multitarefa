@@ -1,6 +1,4 @@
 **/__pycache__/
 build/
 dist/
-principal.spec
 log_so.txt
-version_info.txt
