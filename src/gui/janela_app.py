@@ -1,5 +1,4 @@
 import os
-import subprocess
 from typing import List
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
@@ -322,7 +321,7 @@ class JanelaApp(ctk.CTk):
             messagebox.showwarning("Aviso", "O arquivo de log ainda não foi gerado.")
             return
         try:
-            subprocess.Popen(["notepad.exe", caminho_log])
+            os.startfile(caminho_log)
         except Exception as e:
             messagebox.showerror("Erro ao Abrir Log", f"Não foi possível abrir o Bloco de Notas:\n{e}")
 
